@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TikTok Live Game Tebak-Tebakan</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: #0a0a12;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #fff;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* Input Bar */
+        .connect-box {
+            display: flex;
+            gap: 6px;
+            background: #151522;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid #28283d;
+        }
+        input {
+            flex: 1;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #3d3d5c;
+            background: #0a0a14;
+            color: #fff;
+            font-size: 14px;
+        }
+        button {
+            padding: 10px 16px;
+            background: linear-gradient(135deg, #fe2c55, #ff0050);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        #statusText {
+            font-size: 11px;
+            color: #999;
+            margin: 5px 0 10px 2px;
+        }
+
+        /* Area Game Utama */
+        .game-card {
+            text-align: center;
+            background: linear-gradient(180deg, #181829, #11111d);
+            border: 2px solid #25f4ee;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 10px;
+            box-shadow: 0 0 15px rgba(37, 244, 238, 0.2);
+        }
+        .clue-badge {
+            display: inline-block;
+            background: rgba(37, 244, 238, 0.15);
+            color: #25f4ee;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 4px 10px;
+            border-radius: 20px;
+            margin-bottom: 8px;
+        }
+        .word-display {
+            font-size: 30px;
+            letter-spacing: 6px;
+            font-weight: 900;
+            color: #ffffff;
+            margin: 4px 0;
+            text-shadow: 0 0 8px rgba(255,255,255,0.4);
+        }
+        .combo-box {
+            display: none;
+            font-size: 20px;
+            font-weight: 900;
+            color: #ffd700;
+            margin-top: 6px;
+            text-shadow: 0 0 10px #ff3b30;
+            animation: bounce 0.4s alternate infinite;
+        }
+        @keyframes bounce {
+            from { transform: scale(1); }
+            to { transform: scale(1.08); }
+        }
+        .winner-text {
+            font-size: 13px;
+            color: #25f4ee;
+            margin-top: 6px;
+            min-height: 18px;
+            font-weight: 600;
+        }
+
+        /* Leaderboard 1-7 (Kiri: Tebakan, Kanan: Tap-tap) */
+        .ranks-container {
+            display: flex;
+            gap: 8px;
+            flex: 1;
+        }
+        .rank-column {
+            flex: 1;
+            background: #141420;
+            border-radius: 10px;
+            padding: 10px 8px;
+            border: 1px solid #232338;
+            display: flex;
+            flex-direction: column;
+        }
+        .rank-title {
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #2d2d48;
+        }
+        .scorer-title { color: #25f4ee; }
+        .tapper-title { color: #fe2c55; }
+
+        ul { list-style: none; padding: 0; margin: 0; flex: 1; }
+        li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            padding: 6px 8px;
+            margin-bottom: 5px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 6px;
+        }
+        .uname {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 85px;
+        }
+        .top1 { background: linear-gradient(90deg, #d4af37, #f39c12); color: #000; font-weight: bold; }
+        .top2 { background: linear-gradient(90deg, #95a5a6, #bdc3c7); color: #000; font-weight: bold; }
+        .top3 { background: linear-gradient(90deg, #d35400, #e67e22); color: #fff; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <!-- Bar Masukkan Username TikTok -->
+    <div class="connect-box">
+        <input type="text" id="usernameInput" placeholder="Ketik username TikTok...">
+        <button onclick="startConnection()">Connect</button>
+    </div>
+    <div id="statusText">Status: Belum terhubung (Masukkan username lalu klik Connect)</div>
+
+    <!-- Tampilan Tebakan & Combo -->
+    <div class="game-card">
+        <div class="clue-badge" id="clueText">TEBAK: MEMUAT...</div>
+        <div class="word-display" id="displayWord">_ _ _ _ _</div>
+        <div class="combo-box" id="comboBadge">🔥 COMBO x<span id="comboVal">0</span>!</div>
+        <div class="winner-text" id="winnerNote"></div>
+    </div>
+
+    <!-- Leaderboard Top 1-7 -->
+    <div class="ranks-container">
+        <!-- Top 7 Penebak Tercepat/Terbanyak -->
+        <div class="rank-column">
+            <div class="rank-title scorer-title">🏆 TOP 1-7 TEBAK</div>
+            <ul id="listScorers">
+                <li style="color:#777;">Belum ada tebakan</li>
+            </ul>
+        </div>
+
+        <!-- Top 7 Tap-Tap (Likes) -->
+        <div class="rank-column">
+            <div class="rank-title tapper-title">❤️ TOP 1-7 TAP-TAP</div>
+            <ul id="listTappers">
+                <li style="color:#777;">Belum ada tap</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+
+        function startConnection() {
+            const user = document.getElementById('usernameInput').value;
+            if (user) {
+                document.getElementById('statusText').innerText = "⏳ Sedang menghubungkan ke @" + user + "...";
+                socket.emit('connectTiktok', user);
+            }
+        }
+
+        socket.on('initGame', data => {
+            if (data.question) updateQuestion(data.question);
+            if (data.topScorers) renderList('listScorers', data.topScorers, 'score', 'poin');
+            if (data.topTappers) renderList('listTappers', data.topTappers, 'likes', 'tap');
+            if (data.combo > 0) showCombo(data.combo);
+        });
+
+        socket.on('status', msg => {
+            document.getElementById('statusText').innerText = msg;
+        });
+
+        socket.on('correctAnswer', data => {
+            document.getElementById('winnerNote').innerText = '🎉 ' + data.winner + ' Benar!';
+            showCombo(data.combo);
+            renderList('listScorers', data.topScorers, 'score', 'poin');
+            if (data.nextQuestion) {
+                setTimeout(() => updateQuestion(data.nextQuestion), 1200);
+            }
+        });
+
+        socket.on('resetCombo', () => {
+            document.getElementById('comboBadge').style.display = 'none';
+        });
+
+        socket.on('updateTopTappers', list => {
+            renderList('listTappers', list, 'likes', 'tap');
+        });
+
+        function updateQuestion(q) {
+            document.getElementById('clueText').innerText = 'TEBAK: ' + q.clue;
+            document.getElementById('displayWord').innerText = q.display;
+            document.getElementById('winnerNote').innerText = '';
+        }
+
+        function showCombo(val) {
+            const cb = document.getElementById('comboBadge');
+            cb.style.display = 'block';
+            document.getElementById('comboVal').innerText = val;
+        }
+
+        function renderList(elemId, items, key, unit) {
+            const ul = document.getElementById(elemId);
+            if (!items || items.length === 0) return;
+            ul.innerHTML = '';
+            items.forEach((item, idx) => {
+                const li = document.createElement('li');
+                if (idx === 0) li.className = 'top1';
+                else if (idx === 1) li.className = 'top2';
+                else if (idx === 2) li.className = 'top3';
+
+                li.innerHTML = `
+                    <span class="uname">#${idx + 1} ${item.name}</span>
+                    <span>${item[key]} ${unit}</span>
+                `;
+                ul.appendChild(li);
+            });
+        }
+    </script>
+</body>
+</html>
